@@ -368,7 +368,7 @@
           style="font-size:.875rem;margin:0 auto;max-width:38rem;line-height:1.65;">
           Select a data file from the dropdown above to view its contents.
           Ensure the Zero Trust Assessment has been run and the
-          <code class="inline">export/</code> folder is present next to this file.
+          <code class="inline">ZeroTrustReport/zt-export/</code> folder is present at the repository root.
         </p>
       </div>
     </div>
@@ -500,10 +500,10 @@
     'RoleEligibilityScheduleInstance', 'RoleEligibilityScheduleInstanceGroup',
     'RoleManagementPolicyAssignment',
     'ServicePrincipal', 'ServicePrincipalSignIn',
-    'SignIn', 'User', 'UserRegistrationDetails'
+    'SignIn', 'User', 'UserRegistrationDetails', 'ztConfig'
   ];
 
-  const EXPORT_BASE = './export/';
+  const EXPORT_BASE = '../../ZeroTrustReport/zt-export/';
   const MAX_CELL = 256; // characters shown per cell before truncation
 
   // ──────────────────────────────────────────────────────────────────
@@ -581,14 +581,14 @@
       showState('empty');
       document.getElementById('empty-title').textContent = 'No export files found';
       document.getElementById('empty-msg').innerHTML =
-        'No JSON data files were found in the <code class="inline">export/</code> folder next to this page.' +
+        'No JSON data files were found in the expected <code class="inline">ZeroTrustReport/zt-export/</code> folder.' +
         '<br/><br/><strong>Tips:</strong>' +
         '<ul style="text-align:left;display:inline-block;margin:.5rem 0 0;padding-left:1.5rem;line-height:2;">' +
         '<li>Run the Zero Trust Assessment PowerShell module first to generate the export data.</li>' +
+        '<li>Expected layout: <code class="inline">ZeroTrustReport/zt-export/{EntityName}/{EntityName}-0.json</code></li>' +
         '<li>If you opened this HTML file by double-clicking, browsers block <code class="inline">file://</code> ' +
-        'access to other local files. Serve via a local web server instead:<br/>' +
-        '<code class="inline">python -m http.server 8080</code> then open ' +
-        '<code class="inline">http://localhost:8080/raw-data-viewer.html</code></li>' +
+        'access to other local files. Use the included <code class="inline">Open-RawDataViewer.ps1</code> script ' +
+        '(in the same folder as this file) to start a local web server automatically.</li>' +
         '</ul>';
       return;
     }
@@ -630,7 +630,7 @@
       document.getElementById('empty-msg').innerHTML =
         `<strong>${esc(err.message)}</strong><br/><br/>` +
         'If opening from <code class="inline">file://</code>, browsers block local file access. ' +
-        'Use a local HTTP server: <code class="inline">python -m http.server 8080</code>';
+        'Use the included <code class="inline">Open-RawDataViewer.ps1</code> PowerShell script to start a local HTTP server automatically.';
       console.error('Load error for', name, err);
     }
   }
