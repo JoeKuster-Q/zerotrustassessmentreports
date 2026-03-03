@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Raw Data Viewer — Zero Trust Assessment</title>
+  <link rel="icon" type="image/x-icon" href="https://microsoft.github.io/zerotrustassessment/img/favicon.ico" />
+
+  <!-- Tailwind CSS v3 CDN with class-based dark mode -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+          },
+          borderRadius: { DEFAULT: 'var(--radius)', lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+        },
+      },
+    };
+  </script>
+
+  <!-- jsPDF + AutoTable (PDF export) — loaded from cdnjs; verify SRI hashes at https://cdnjs.com -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <style>
+    /* ─── CSS Custom Properties (mirrors src/report/src/index.css) ─── */
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 84% 4.9%;
+      --primary: 222.2 47.4% 11.2%;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 210 40% 96.1%;
+      --secondary-foreground: 222.2 47.4% 11.2%;
+      --muted: 210 40% 96.1%;
+      --muted-foreground: 215.4 16.3% 46.9%;
+      --accent: 210 40% 96.1%;
+      --accent-foreground: 222.2 47.4% 11.2%;
+      --border: 214.3 31.8% 91.4%;
+      --input: 214.3 31.8% 91.4%;
+      --ring: 222.2 84% 4.9%;
+      --radius: 0.5rem;
+    }
+    .dark {
+      --background: 222.2 84% 4.9%;
+      --foreground: 210 40% 98%;
+      --card: 222.2 84% 4.9%;
+      --card-foreground: 210 40% 98%;
+      --primary: 210 40% 98%;
+      --primary-foreground: 222.2 47.4% 11.2%;
+      --secondary: 217.2 32.6% 17.5%;
+      --secondary-foreground: 210 40% 98%;
+      --muted: 217.2 32.6% 17.5%;
+      --muted-foreground: 215 20.2% 65.1%;
+      --accent: 217.2 32.6% 17.5%;
+      --accent-foreground: 210 40% 98%;
+      --border: 217.2 32.6% 17.5%;
+      --input: 217.2 32.6% 17.5%;
+      --ring: 212.7 26.8% 83.9%;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+    }
+
+    /* ─── Buttons ─── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 0.375rem; padding: 0.4rem 0.875rem;
+      font-size: 0.875rem; font-weight: 500;
+      border-radius: var(--radius); border: 1px solid transparent;
+      cursor: pointer; transition: background-color .15s, color .15s, border-color .15s, opacity .15s;
+      white-space: nowrap; line-height: 1.25; background: none; text-decoration: none;
+      font-family: inherit;
+    }
+    .btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; pointer-events: none; }
+    .btn-sm { padding: .25rem .5rem; font-size: .75rem; }
+    .btn-icon { padding: .4rem; width: 2rem; height: 2rem; }
+    .btn-primary { background-color: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+    .btn-primary:hover:not(:disabled) { opacity: .88; }
+    .btn-outline { background-color: transparent; border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
+    .btn-outline:hover:not(:disabled) { background-color: hsl(var(--accent)); }
+    .btn-ghost { background-color: transparent; color: hsl(var(--foreground)); border-color: transparent; }
+    .btn-ghost:hover:not(:disabled) { background-color: hsl(var(--accent)); }
+    .btn-active-page { background-color: hsl(var(--primary)) !important; color: hsl(var(--primary-foreground)) !important; border-color: hsl(var(--primary)) !important; }
+
+    /* ─── Inputs / Selects ─── */
+    .input {
+      padding: .4rem .75rem; font-size: .875rem;
+      border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+      background-color: hsl(var(--background)); color: hsl(var(--foreground));
+      outline: none; font-family: inherit;
+    }
+    .input:focus { border-color: hsl(var(--ring)); box-shadow: 0 0 0 1px hsl(var(--ring)); }
+    .select {
+      padding: .4rem 2.5rem .4rem .75rem; font-size: .875rem;
+      border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+      background-color: hsl(var(--background)); color: hsl(var(--foreground));
+      outline: none; appearance: none; cursor: pointer; font-family: inherit;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right .5rem center;
+    }
+    .select:focus { border-color: hsl(var(--ring)); box-shadow: 0 0 0 1px hsl(var(--ring)); }
+
+    /* ─── Card ─── */
+    .card {
+      background-color: hsl(var(--card)); color: hsl(var(--card-foreground));
+      border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+    }
+
+    /* ─── Header ─── */
+    .app-header {
+      position: sticky; top: 0; z-index: 50;
+      background-color: hsl(var(--background) / .92);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1px solid hsl(var(--border));
+    }
+    .header-inner {
+      max-width: 80rem; margin: 0 auto; padding: 0 2rem;
+      display: flex; height: 3.5rem; align-items: center; justify-content: space-between;
+    }
+
+    /* ─── Table ─── */
+    .table-scroll {
+      overflow-x: auto; overflow-y: auto; max-height: 62vh;
+    }
+    .data-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+    .data-table thead { position: sticky; top: 0; z-index: 10; background-color: hsl(var(--card)); }
+    .data-table th {
+      border-bottom: 2px solid hsl(var(--border));
+      border-right: 1px solid hsl(var(--border));
+      min-width: 120px; max-width: 280px; padding: 0;
+      vertical-align: top; background-color: hsl(var(--card));
+    }
+    .data-table th:last-child { border-right: none; }
+
+    .th-sort-btn {
+      display: flex; align-items: center; gap: .25rem; padding: .5rem .75rem;
+      width: 100%; font-size: .7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .05em; color: hsl(var(--muted-foreground));
+      cursor: pointer; user-select: none;
+      background: transparent; border: none; font-family: inherit;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .th-sort-btn:hover { color: hsl(var(--foreground)); }
+    .th-sort-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+    .sort-icon { font-size: .6rem; opacity: .4; flex-shrink: 0; }
+    .sort-icon.active { opacity: 1; }
+
+    .th-filter-input {
+      display: block; width: 100%; padding: .2rem .5rem; font-size: .7rem;
+      border: none; border-top: 1px solid hsl(var(--border));
+      background-color: hsl(var(--background)); color: hsl(var(--foreground));
+      outline: none; font-family: inherit;
+    }
+    .th-filter-input:focus { border-top-color: hsl(var(--ring)); box-shadow: inset 0 1px 0 hsl(var(--ring)); }
+    .th-filter-input.col-active { border-top-color: hsl(220 70% 55%); background-color: hsl(220 80% 97%); }
+    .dark .th-filter-input.col-active { background-color: hsl(220 30% 18%); }
+
+    .data-table td {
+      padding: .45rem .75rem;
+      border-bottom: 1px solid hsl(var(--border));
+      border-right: 1px solid hsl(var(--border));
+      min-width: 120px; max-width: 280px;
+      vertical-align: top; word-break: break-word;
+    }
+    .data-table td:last-child { border-right: none; }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table tbody tr:nth-child(even) { background-color: hsl(var(--muted) / .3); }
+    .data-table tbody tr:hover { background-color: hsl(var(--accent)); }
+    .cell-val { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cell-null { color: hsl(var(--muted-foreground)); font-style: italic; }
+
+    /* ─── Spinner ─── */
+    .spinner {
+      width: 2rem; height: 2rem;
+      border: 3px solid hsl(var(--muted));
+      border-top-color: hsl(var(--primary));
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Divider ─── */
+    .vdivider { width: 1px; align-self: stretch; background-color: hsl(var(--border)); flex-shrink: 0; }
+
+    /* ─── Utility ─── */
+    .muted { color: hsl(var(--muted-foreground)); }
+    code.inline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: .85em; background: hsl(var(--muted));
+      padding: .1rem .3rem; border-radius: .25rem;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!--  HEADER                                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <!-- Logo + App name -->
+      <a href="#" style="display:flex;align-items:center;gap:.625rem;text-decoration:none;color:inherit;" aria-label="Zero Trust Assessment — Raw Data Viewer">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18" style="width:1.5rem;height:1.5rem;flex-shrink:0;" aria-hidden="true">
+          <path fill="#F35123" d="M0 0h7v7H0z"/>
+          <path fill="#01A4EF" d="M0 9h7v7H0z"/>
+          <path fill="#7FBA00" d="M9 0h7v7H9z"/>
+          <path fill="#FFB901" d="M9 9h7v7H9z"/>
+        </svg>
+        <span id="header-brand" style="font-weight:700;font-size:.9rem;display:none;">Zero Trust Assessment</span>
+      </a>
+
+      <!-- Right controls -->
+      <nav style="display:flex;align-items:center;gap:.375rem;" aria-label="Page controls">
+        <button id="btn-theme" onclick="toggleTheme()" class="btn btn-ghost btn-icon"
+          title="Toggle light/dark mode" aria-label="Toggle light/dark mode">
+          <svg id="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="width:1rem;height:1rem;" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            style="width:1rem;height:1rem;display:none;" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+        <a href="https://github.com/microsoft/zerotrustassessment" target="_blank" rel="noreferrer noopener"
+          class="btn btn-ghost btn-icon" title="View on GitHub" aria-label="View project on GitHub">
+          <svg viewBox="0 0 438.549 438.549" style="width:1rem;height:1rem;" aria-hidden="true">
+            <path fill="currentColor" d="M409.132 114.573c-19.608-33.596-46.205-60.194-79.798-79.8-33.598-19.607-70.277-29.408-110.063-29.408-39.781 0-76.472 9.804-110.063 29.408-33.596 19.605-60.192 46.204-79.8 79.8C9.803 148.168 0 184.854 0 224.63c0 47.78 13.94 90.745 41.827 128.906 27.884 38.164 63.906 64.572 108.063 79.227 5.14.954 8.945.283 11.419-1.996 2.475-2.282 3.711-5.14 3.711-8.562 0-.571-.049-5.708-.144-15.417a2549.81 2549.81 0 01-.144-25.406l-6.567 1.136c-4.187.767-9.469 1.092-15.846 1-6.374-.089-12.991-.757-19.842-1.999-6.854-1.231-13.229-4.086-19.13-8.559-5.898-4.473-10.085-10.328-12.56-17.556l-2.855-6.57c-1.903-4.374-4.899-9.233-8.992-14.559-4.093-5.331-8.232-8.945-12.419-10.848l-1.999-1.431c-1.332-.951-2.568-2.098-3.711-3.429-1.142-1.331-1.997-2.663-2.568-3.997-.572-1.335-.098-2.43 1.427-3.289 1.525-.859 4.281-1.276 8.28-1.276l5.708.853c3.807.763 8.516 3.042 14.133 6.851 5.614 3.806 10.229 8.754 13.846 14.842 4.38 7.806 9.657 13.754 15.846 17.847 6.184 4.093 12.419 6.136 18.699 6.136 6.28 0 11.704-.476 16.274-1.423 4.565-.952 8.848-2.383 12.847-4.285 1.713-12.758 6.377-22.559 13.988-29.41-10.848-1.14-20.601-2.857-29.264-5.14-8.658-2.286-17.605-5.996-26.835-11.14-9.235-5.137-16.896-11.516-22.985-19.126-6.09-7.614-11.088-17.61-14.987-29.979-3.901-12.374-5.852-26.648-5.852-42.826 0-23.035 7.52-42.637 22.557-58.817-7.044-17.318-6.379-36.732 1.997-58.24 5.52-1.715 13.706-.428 24.554 3.853 10.85 4.283 18.794 7.952 23.84 10.994 5.046 3.041 9.089 5.618 12.135 7.708 17.705-4.947 35.976-7.421 54.818-7.421s37.117 2.474 54.823 7.421l10.849-6.849c7.419-4.57 16.18-8.758 26.262-12.565 10.088-3.805 17.802-4.853 23.134-3.138 8.562 21.509 9.325 40.922 2.279 58.24 15.036 16.18 22.559 35.787 22.559 58.817 0 16.178-1.958 30.497-5.853 42.966-3.9 12.471-8.941 22.457-15.125 29.979-6.191 7.521-13.901 13.85-23.131 18.986-9.232 5.14-18.182 8.85-26.84 11.136-8.662 2.286-18.415 4.004-29.263 5.146 9.894 8.562 14.842 22.077 14.842 40.539v60.237c0 3.422 1.19 6.279 3.572 8.562 2.379 2.279 6.136 2.95 11.276 1.995 44.163-14.653 80.185-41.062 108.068-79.226 27.88-38.161 41.825-81.126 41.825-128.906-.01-39.771-9.818-76.454-29.414-110.049z"/>
+          </svg>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!--  MAIN                                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <main style="flex:1;max-width:80rem;margin:0 auto;width:100%;padding:1.5rem 2rem;" role="main">
+
+    <!-- Page heading -->
+    <div style="margin-bottom:1.25rem;">
+      <h1 style="font-size:1.875rem;font-weight:600;letter-spacing:-.025em;margin:0 0 .25rem;">Raw Data Viewer</h1>
+      <p class="muted" style="font-size:.875rem;margin:0;">
+        Browse, filter, and export the raw JSON data generated by the Zero Trust Assessment.
+      </p>
+    </div>
+
+    <!-- ── Controls Card ── -->
+    <div class="card" style="padding:1rem;margin-bottom:1rem;" role="region" aria-label="Data controls">
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:.75rem;">
+
+        <!-- File selector -->
+        <div style="display:flex;align-items:center;gap:.5rem;">
+          <label for="file-select" style="font-size:.875rem;font-weight:500;white-space:nowrap;">Data File:</label>
+          <select id="file-select" class="select" aria-label="Select a data file to display">
+            <option value="">Discovering files…</option>
+          </select>
+        </div>
+
+        <div class="vdivider" id="div1" style="display:none;"></div>
+
+        <!-- Global search -->
+        <div style="display:flex;align-items:center;gap:.5rem;flex:1;min-width:12rem;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" style="width:1rem;height:1rem;flex-shrink:0;" class="muted" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input id="global-search" type="search" class="input" style="flex:1;"
+            placeholder="Search all columns…" aria-label="Search all columns" />
+        </div>
+
+        <!-- Clear filters -->
+        <button onclick="clearAllFilters()" class="btn btn-outline" aria-label="Clear all active filters">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" style="width:1rem;height:1rem;" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Clear Filters
+        </button>
+
+        <div class="vdivider" id="div2" style="display:none;"></div>
+
+        <!-- Export buttons -->
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;" role="group" aria-label="Export options">
+          <button id="btn-csv" onclick="exportCSV()" class="btn btn-outline" disabled
+            aria-label="Export filtered data as CSV file">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" style="width:1rem;height:1rem;" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export CSV
+          </button>
+          <button id="btn-pdf" onclick="exportPDF()" class="btn btn-outline" disabled
+            aria-label="Export filtered data as PDF file">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" style="width:1rem;height:1rem;" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            Export PDF
+          </button>
+          <button id="btn-master-pdf" onclick="exportMasterPDF()" class="btn btn-primary" disabled
+            aria-label="Export all available entity data to a single master PDF">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2" style="width:1rem;height:1rem;" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/>
+            </svg>
+            Export Master PDF
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Loading State ── -->
+    <div id="loading-state" style="display:none;flex-direction:column;align-items:center;
+      justify-content:center;padding:4rem 1rem;gap:.75rem;" role="status" aria-live="polite">
+      <div class="spinner"></div>
+      <p id="loading-msg" class="muted" style="font-size:.875rem;margin:0;">Loading data…</p>
+    </div>
+
+    <!-- ── Empty / Error State ── -->
+    <div id="empty-state" class="card" role="region" aria-label="Status message">
+      <div style="text-align:center;padding:3rem 1.5rem;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.5" style="width:3rem;height:3rem;margin:0 auto 1rem;" class="muted" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="11" y2="16"/>
+        </svg>
+        <p id="empty-title" style="font-size:1rem;font-weight:500;margin:0 0 .5rem;">No data loaded</p>
+        <p id="empty-msg" class="muted"
+          style="font-size:.875rem;margin:0 auto;max-width:38rem;line-height:1.65;">
+          Select a data file from the dropdown above to view its contents.
+          Ensure the Zero Trust Assessment has been run and the
+          <code class="inline">export/</code> folder is present next to this file.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Table Container ── -->
+    <div id="table-container" style="display:none;" role="region" aria-label="Data table and pagination">
+
+      <!-- Stats row -->
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        margin-bottom:.5rem;font-size:.8125rem;flex-wrap:wrap;gap:.5rem;">
+        <span id="stat-records" class="muted"></span>
+        <span id="stat-columns" class="muted"></span>
+      </div>
+
+      <!-- Table -->
+      <div class="card" style="overflow:hidden;">
+        <div class="table-scroll" id="table-scroll">
+          <table class="data-table" id="data-table" role="grid" aria-label="Exported data records">
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Pagination Bar ── -->
+      <div id="pagination-bar" style="display:flex;flex-wrap:wrap;align-items:center;
+        justify-content:space-between;gap:.75rem;margin-top:1rem;font-size:.8125rem;"
+        role="navigation" aria-label="Pagination">
+
+        <span id="pagination-info" class="muted"></span>
+
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <!-- Rows per page -->
+          <div style="display:flex;align-items:center;gap:.375rem;"
+            role="group" aria-label="Rows per page selector">
+            <span class="muted" style="white-space:nowrap;">Rows:</span>
+            <button class="btn btn-outline btn-sm pgsz-btn" data-sz="10"
+              onclick="setPageSize(10)" aria-label="Show 10 rows per page">10</button>
+            <button class="btn btn-outline btn-sm pgsz-btn" data-sz="25"
+              onclick="setPageSize(25)" aria-label="Show 25 rows per page">25</button>
+            <button class="btn btn-outline btn-sm pgsz-btn" data-sz="100"
+              onclick="setPageSize(100)" aria-label="Show 100 rows per page">100</button>
+            <button class="btn btn-outline btn-sm pgsz-btn" data-sz="0"
+              onclick="setPageSize(0)" aria-label="Show all rows">All</button>
+          </div>
+
+          <!-- Page nav -->
+          <div style="display:flex;align-items:center;gap:.125rem;">
+            <button class="btn btn-ghost btn-sm" id="page-first" onclick="goToPage(1)"
+              aria-label="First page" title="First page">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" style="width:.875rem;height:.875rem;" aria-hidden="true">
+                <polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/>
+              </svg>
+            </button>
+            <button class="btn btn-ghost btn-sm" id="page-prev" onclick="goToPage(st.page - 1)"
+              aria-label="Previous page" title="Previous page">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" style="width:.875rem;height:.875rem;" aria-hidden="true">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
+            <span id="page-label" style="padding:0 .5rem;white-space:nowrap;"
+              aria-live="polite" aria-atomic="true"></span>
+            <button class="btn btn-ghost btn-sm" id="page-next" onclick="goToPage(st.page + 1)"
+              aria-label="Next page" title="Next page">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" style="width:.875rem;height:.875rem;" aria-hidden="true">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+            <button class="btn btn-ghost btn-sm" id="page-last" onclick="goToPage(totalPages())"
+              aria-label="Last page" title="Last page">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" style="width:.875rem;height:.875rem;" aria-hidden="true">
+                <polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div><!-- /table-container -->
+
+  </main>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!--  FOOTER                                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <footer style="border-top:1px solid hsl(var(--border));background-color:hsl(var(--card));margin-top:auto;"
+    role="contentinfo">
+    <div style="max-width:80rem;margin:0 auto;padding:1.25rem 2rem;
+      display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;">
+      <div style="display:flex;align-items:center;gap:.5rem;font-size:.75rem;" class="muted">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18"
+          style="width:1.125rem;height:1.125rem;flex-shrink:0;" aria-hidden="true">
+          <path fill="#F35123" d="M0 0h7v7H0z"/>
+          <path fill="#01A4EF" d="M0 9h7v7H0z"/>
+          <path fill="#7FBA00" d="M9 0h7v7H9z"/>
+          <path fill="#FFB901" d="M9 9h7v7H9z"/>
+        </svg>
+        <span>Zero Trust Assessment · Raw Data Viewer · v1.0</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:.75rem;font-size:.75rem;" class="muted">
+        <span>© <span id="footer-year"></span> Microsoft Corporation</span>
+        <span aria-hidden="true">·</span>
+        <a href="https://privacy.microsoft.com/privacystatement" target="_blank" rel="noreferrer noopener"
+          style="color:inherit;" onmouseover="this.style.textDecoration='underline'"
+          onmouseout="this.style.textDecoration='none'">Privacy</a>
+        <span aria-hidden="true">·</span>
+        <a href="https://www.microsoft.com/legal/terms-of-use" target="_blank" rel="noreferrer noopener"
+          style="color:inherit;" onmouseover="this.style.textDecoration='underline'"
+          onmouseout="this.style.textDecoration='none'">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!--  APPLICATION SCRIPT                                             -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <script>
+  // ──────────────────────────────────────────────────────────────────
+  // CONSTANTS
+  // ──────────────────────────────────────────────────────────────────
+  const KNOWN_ENTITIES = [
+    'Application', 'ConfigurationPolicy', 'Device',
+    'RoleAssignment', 'RoleAssignmentGroup',
+    'RoleAssignmentScheduleInstance', 'RoleAssignmentScheduleInstanceGroup',
+    'RoleDefinition',
+    'RoleEligibilityScheduleInstance', 'RoleEligibilityScheduleInstanceGroup',
+    'RoleManagementPolicyAssignment',
+    'ServicePrincipal', 'ServicePrincipalSignIn',
+    'SignIn', 'User', 'UserRegistrationDetails'
+  ];
+
+  const EXPORT_BASE = './export/';
+  const MAX_CELL = 256; // characters shown per cell before truncation
+
+  // ──────────────────────────────────────────────────────────────────
+  // STATE
+  // ──────────────────────────────────────────────────────────────────
+  const st = {
+    files: [],          // [{name:string, type:'folder'|'file'}]
+    cache: {},          // {name: {cols:string[], rows:object[]}}
+    entity: null,       // currently displayed entity name
+    cols: [],           // string[] – columns for current entity
+    allRows: [],        // all flat rows for current entity
+    filteredRows: [],   // rows after filters + sort
+    sortCol: null,      // string | null
+    sortDir: 'none',    // 'asc' | 'desc' | 'none'
+    globalFilter: '',
+    colFilters: {},     // {colName: string}
+    page: 1,
+    pageSize: 25,       // 0 = show all
+  };
+
+  let debTimer = null;
+
+  // ──────────────────────────────────────────────────────────────────
+  // THEME  (matches existing darkMode: ["class"] Tailwind config)
+  // ──────────────────────────────────────────────────────────────────
+  function initTheme() {
+    applyTheme(localStorage.getItem('zt-raw-theme') || 'light');
+    const brand = document.getElementById('header-brand');
+    if (brand) brand.style.display = window.innerWidth >= 520 ? 'inline' : 'none';
+  }
+
+  function toggleTheme() {
+    applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
+  }
+
+  function applyTheme(t) {
+    document.documentElement.classList.toggle('dark', t === 'dark');
+    document.getElementById('icon-moon').style.display = t === 'dark' ? 'none' : '';
+    document.getElementById('icon-sun').style.display  = t === 'dark' ? '' : 'none';
+    localStorage.setItem('zt-raw-theme', t);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // FILE DISCOVERY
+  // The PowerShell export creates:
+  //   export/{EntityName}/{EntityName}-0.json   (paged folder pattern)
+  //   export/{EntityName}/{EntityName}-1.json   …
+  // or occasionally a single flat file:
+  //   export/{EntityName}.json
+  // ──────────────────────────────────────────────────────────────────
+  async function discoverFiles() {
+    showState('loading');
+    setLoadMsg('Discovering export files…');
+
+    const found = [];
+    await Promise.all(KNOWN_ENTITIES.map(async name => {
+      // Prefer paged folder pattern
+      try {
+        const r = await fetch(`${EXPORT_BASE}${name}/${name}-0.json`, { method: 'HEAD' });
+        if (r.ok) { found.push({ name, type: 'folder' }); return; }
+      } catch { /* blocked or missing */ }
+      // Fall back to flat single file
+      try {
+        const r = await fetch(`${EXPORT_BASE}${name}.json`, { method: 'HEAD' });
+        if (r.ok) { found.push({ name, type: 'file' }); return; }
+      } catch { /* not available */ }
+    }));
+
+    found.sort((a, b) => a.name.localeCompare(b.name));
+    st.files = found;
+
+    const sel = document.getElementById('file-select');
+    if (found.length === 0) {
+      sel.innerHTML = '<option value="">No export files found</option>';
+      showState('empty');
+      document.getElementById('empty-title').textContent = 'No export files found';
+      document.getElementById('empty-msg').innerHTML =
+        'No JSON data files were found in the <code class="inline">export/</code> folder next to this page.' +
+        '<br/><br/><strong>Tips:</strong>' +
+        '<ul style="text-align:left;display:inline-block;margin:.5rem 0 0;padding-left:1.5rem;line-height:2;">' +
+        '<li>Run the Zero Trust Assessment PowerShell module first to generate the export data.</li>' +
+        '<li>If you opened this HTML file by double-clicking, browsers block <code class="inline">file://</code> ' +
+        'access to other local files. Serve via a local web server instead:<br/>' +
+        '<code class="inline">python -m http.server 8080</code> then open ' +
+        '<code class="inline">http://localhost:8080/raw-data-viewer.html</code></li>' +
+        '</ul>';
+      return;
+    }
+
+    sel.innerHTML = found.map(f => `<option value="${esc(f.name)}">${esc(f.name)}</option>`).join('');
+    document.getElementById('div1').style.display = 'block';
+    document.getElementById('div2').style.display = 'block';
+    document.getElementById('btn-master-pdf').disabled = false;
+
+    sel.onchange = () => loadEntity(sel.value);
+    await loadEntity(found[0].name);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // LOAD ENTITY
+  // ──────────────────────────────────────────────────────────────────
+  async function loadEntity(name) {
+    if (!name) return;
+    st.entity = name;
+
+    if (st.cache[name]) { activateEntity(name); return; }
+
+    showState('loading');
+    setLoadMsg(`Loading ${name}…`);
+
+    try {
+      const fileInfo = st.files.find(f => f.name === name);
+      const records = await fetchEntityRecords(fileInfo || { name, type: 'folder' });
+
+      const flatRows = records.map(flattenRecord);
+      const colSet = new Set();
+      flatRows.forEach(r => Object.keys(r).forEach(k => colSet.add(k)));
+
+      st.cache[name] = { cols: Array.from(colSet), rows: flatRows };
+      activateEntity(name);
+    } catch (err) {
+      showState('empty');
+      document.getElementById('empty-title').textContent = `Failed to load ${esc(name)}`;
+      document.getElementById('empty-msg').innerHTML =
+        `<strong>${esc(err.message)}</strong><br/><br/>` +
+        'If opening from <code class="inline">file://</code>, browsers block local file access. ' +
+        'Use a local HTTP server: <code class="inline">python -m http.server 8080</code>';
+      console.error('Load error for', name, err);
+    }
+  }
+
+  async function fetchEntityRecords(fileInfo) {
+    let allRecords = [];
+    if (fileInfo.type === 'folder') {
+      let pageIdx = 0;
+      while (true) {
+        const url = `${EXPORT_BASE}${fileInfo.name}/${fileInfo.name}-${pageIdx}.json`;
+        const res = await fetch(url);
+        if (!res.ok) break;
+        const json = await res.json();
+        const records = Array.isArray(json) ? json : (json.value || []);
+        allRecords = allRecords.concat(records);
+        pageIdx++;
+        if (pageIdx > 0) {
+          setLoadMsg(`Loading ${fileInfo.name}… (page ${pageIdx}, ${allRecords.length.toLocaleString()} records)`);
+        }
+      }
+    } else {
+      const res = await fetch(`${EXPORT_BASE}${fileInfo.name}.json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${fileInfo.name}.json`);
+      const json = await res.json();
+      allRecords = Array.isArray(json) ? json : (json.value || []);
+    }
+    // Remove model/template rows (isZtModelRow === true)
+    return allRecords.filter(r => r && !r.isZtModelRow);
+  }
+
+  function activateEntity(name) {
+    const data = st.cache[name];
+    st.cols = data.cols;
+    st.allRows = data.rows;
+    st.colFilters = {};
+    st.globalFilter = '';
+    st.sortCol = null;
+    st.sortDir = 'none';
+    st.page = 1;
+    document.getElementById('global-search').value = '';
+    document.getElementById('file-select').value = name;
+
+    applyFilters();
+    renderTable();
+    renderPagination();
+    showState('table');
+
+    document.getElementById('btn-csv').disabled = false;
+    document.getElementById('btn-pdf').disabled = false;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // DATA FLATTENING  (spec: requirements §2.4)
+  // ──────────────────────────────────────────────────────────────────
+  function flattenRecord(rec) {
+    const flat = {};
+    for (const [k, v] of Object.entries(rec)) {
+      if (k.startsWith('@odata') || k === 'isZtModelRow') continue;
+      flat[k] = flatVal(v);
+    }
+    return flat;
+  }
+
+  function flatVal(v) {
+    if (v === null || v === undefined) return '—';
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (typeof v === 'number')  return String(v);
+    if (typeof v === 'string')  return v.trim() === '' ? '—' : v;
+    if (Array.isArray(v)) {
+      if (v.length === 0) return '—';
+      if (typeof v[0] === 'object' && v[0] !== null) {
+        return v.map(item => `{${flatObj(item)}}`).join(', ') || '—';
+      }
+      return v.map(x => x === null || x === undefined ? '—' : String(x)).join(', ') || '—';
+    }
+    if (typeof v === 'object') return flatObj(v) || '—';
+    return String(v);
+  }
+
+  function flatObj(o) {
+    if (!o || typeof o !== 'object') return String(o);
+    return Object.entries(o)
+      .filter(([k]) => !k.startsWith('@odata'))
+      .map(([k, v]) => {
+        const sv = v === null || v === undefined ? '—'
+          : typeof v === 'object' ? JSON.stringify(v) : String(v);
+        return `${k}: ${sv}`;
+      })
+      .join('; ');
+  }
+
+  function trunc(s, n = MAX_CELL) {
+    return s && s.length > n ? s.slice(0, n) + '…' : (s || '');
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // FILTERING + SORTING
+  // ──────────────────────────────────────────────────────────────────
+  function applyFilters() {
+    let rows = st.allRows;
+
+    // Global filter (case-insensitive substring, any column)
+    if (st.globalFilter) {
+      const lc = st.globalFilter.toLowerCase();
+      rows = rows.filter(r => Object.values(r).some(v => typeof v === 'string' && v.toLowerCase().includes(lc)));
+    }
+
+    // Per-column filters (AND logic)
+    for (const [col, val] of Object.entries(st.colFilters)) {
+      if (!val) continue;
+      const lc = val.toLowerCase();
+      rows = rows.filter(r => (r[col] || '').toLowerCase().includes(lc));
+    }
+
+    // Sort: asc → desc → none (3-state cycle)
+    if (st.sortCol && st.sortDir !== 'none') {
+      const col = st.sortCol;
+      const dir = st.sortDir === 'asc' ? 1 : -1;
+      rows = [...rows].sort((a, b) => {
+        const av = a[col] || '', bv = b[col] || '';
+        const an = parseFloat(av), bn = parseFloat(bv);
+        if (!isNaN(an) && !isNaN(bn)) return (an - bn) * dir;
+        return av.localeCompare(bv) * dir;
+      });
+    }
+
+    st.filteredRows = rows;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // TABLE RENDERING
+  // ──────────────────────────────────────────────────────────────────
+  function renderTable() { renderHead(); renderBody(); updateStats(); }
+
+  function renderHead() {
+    const cells = st.cols.map(col => {
+      const isSorted = st.sortCol === col;
+      const icon     = isSorted ? (st.sortDir === 'asc' ? '▲' : '▼') : '⇅';
+      const iconCls  = isSorted ? 'sort-icon active' : 'sort-icon';
+      const fVal     = esc(st.colFilters[col] || '');
+      const fActive  = st.colFilters[col] ? ' col-active' : '';
+      return `<th>
+        <button class="th-sort-btn" data-sort="${esc(col)}"
+          title="Sort by ${esc(col)}" aria-label="Sort by ${esc(col)}">
+          <span style="overflow:hidden;text-overflow:ellipsis;">${esc(col)}</span>
+          <span class="${iconCls}" aria-hidden="true">${icon}</span>
+        </button>
+        <input class="th-filter-input${fActive}" data-filtercol="${esc(col)}"
+          value="${fVal}" placeholder="Filter…"
+          aria-label="Filter by ${esc(col)}" title="Filter ${esc(col)}" />
+      </th>`;
+    });
+    document.getElementById('table-head').innerHTML = `<tr>${cells.join('')}</tr>`;
+  }
+
+  function renderBody() {
+    const tbody = document.getElementById('table-body');
+    const rows  = pagedRows();
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="${st.cols.length}"
+        style="text-align:center;padding:2rem;font-style:italic;"
+        class="muted">No records match the current filters.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(row => {
+      const cells = st.cols.map(col => {
+        const full    = row[col] || '—';
+        const display = trunc(full);
+        const isNull  = full === '—';
+        const tipAttr = full.length > MAX_CELL ? ` title="${esc(full)}"` : '';
+        return `<td><span class="cell-val${isNull ? ' cell-null' : ''}"${tipAttr}>${esc(display)}</span></td>`;
+      });
+      return `<tr>${cells.join('')}</tr>`;
+    }).join('');
+  }
+
+  function pagedRows() {
+    const { page, pageSize, filteredRows } = st;
+    if (pageSize === 0) return filteredRows;
+    return filteredRows.slice((page - 1) * pageSize, page * pageSize);
+  }
+
+  function totalPages() {
+    if (st.pageSize === 0) return 1;
+    return Math.max(1, Math.ceil(st.filteredRows.length / st.pageSize));
+  }
+
+  function updateStats() {
+    const tot = st.filteredRows.length, all = st.allRows.length;
+    const ps  = st.pageSize === 0 ? tot : st.pageSize;
+    const s   = tot === 0 ? 0 : (st.page - 1) * ps + 1;
+    const e   = st.pageSize === 0 ? tot : Math.min(st.page * ps, tot);
+    const note = tot < all ? ` (${all.toLocaleString()} total)` : '';
+    document.getElementById('stat-records').textContent =
+      `Showing ${s.toLocaleString()}–${e.toLocaleString()} of ${tot.toLocaleString()} records${note}`;
+    document.getElementById('stat-columns').textContent = `${st.cols.length} columns`;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PAGINATION
+  // ──────────────────────────────────────────────────────────────────
+  function renderPagination() {
+    const tp = totalPages(), pg = st.page;
+    document.getElementById('page-label').textContent = `Page ${pg} of ${tp}`;
+    document.getElementById('page-first').disabled = pg <= 1;
+    document.getElementById('page-prev').disabled  = pg <= 1;
+    document.getElementById('page-next').disabled  = pg >= tp;
+    document.getElementById('page-last').disabled  = pg >= tp;
+    document.querySelectorAll('.pgsz-btn').forEach(btn => {
+      const active = parseInt(btn.dataset.sz, 10) === st.pageSize;
+      btn.classList.toggle('btn-active-page', active);
+      btn.classList.toggle('btn-outline', !active);
+    });
+    updateStats();
+  }
+
+  function goToPage(pg) {
+    st.page = Math.max(1, Math.min(pg, totalPages()));
+    renderBody();
+    renderPagination();
+    const s = document.getElementById('table-scroll');
+    if (s) s.scrollTop = 0;
+  }
+
+  function setPageSize(size) {
+    st.pageSize = size;
+    st.page = 1;
+    renderBody();
+    renderPagination();
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // EVENT DELEGATION  (sort headers + column filter inputs)
+  // ──────────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    const thead = document.getElementById('table-head');
+
+    thead.addEventListener('click', e => {
+      const btn = e.target.closest('[data-sort]');
+      if (btn) onSort(btn.dataset.sort);
+    });
+    thead.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const btn = e.target.closest('[data-sort]');
+        if (btn) { e.preventDefault(); onSort(btn.dataset.sort); }
+      }
+    });
+    thead.addEventListener('input', e => {
+      const inp = e.target.closest('[data-filtercol]');
+      if (inp) onColFilter(inp.dataset.filtercol, inp.value, inp);
+    });
+
+    document.getElementById('global-search').addEventListener('input', e => {
+      clearTimeout(debTimer);
+      debTimer = setTimeout(() => {
+        st.globalFilter = e.target.value;
+        st.page = 1;
+        applyFilters();
+        renderTable();
+        renderPagination();
+      }, 300);
+    });
+
+    document.getElementById('footer-year').textContent = new Date().getFullYear();
+    initTheme();
+    discoverFiles();
+  });
+
+  function onSort(col) {
+    if (st.sortCol === col) {
+      if (st.sortDir === 'asc')       st.sortDir = 'desc';
+      else if (st.sortDir === 'desc') { st.sortCol = null; st.sortDir = 'none'; }
+      else                             st.sortDir = 'asc';
+    } else {
+      st.sortCol = col;
+      st.sortDir = 'asc';
+    }
+    st.page = 1;
+    applyFilters();
+    renderTable();
+    renderPagination();
+  }
+
+  function onColFilter(col, val, inputEl) {
+    st.colFilters[col] = val;
+    st.page = 1;
+    applyFilters();
+    renderBody();
+    renderPagination();
+    // Update the active highlight: use the passed element (from event delegation)
+    // or fall back to a DOM query when called programmatically.
+    const inp = inputEl || document.querySelector(`[data-filtercol="${CSS.escape(col)}"]`);
+    if (inp) inp.classList.toggle('col-active', !!val);
+  }
+
+  function clearAllFilters() {
+    st.globalFilter = '';
+    st.colFilters   = {};
+    st.page = 1;
+    document.getElementById('global-search').value = '';
+    applyFilters();
+    renderTable();
+    renderPagination();
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // CSV EXPORT  (RFC 4180 compliant)
+  // ──────────────────────────────────────────────────────────────────
+  function exportCSV() {
+    if (!st.entity) return;
+    const cols = st.cols, rows = st.filteredRows;
+    // Note: the display placeholder '—' is exported as an empty string so that
+    // CSV consumers receive a clean empty cell rather than the UI sentinel value.
+    const q = v => {
+      const s = v === '—' ? '' : String(v || '');
+      return (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r'))
+        ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const csv = cols.map(q).join(',') + '\r\n' +
+                rows.map(r => cols.map(c => q(r[c])).join(',')).join('\r\n');
+    download(new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
+             `${st.entity}-export-${isoDate()}.csv`);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PDF EXPORT — Single Entity
+  // ──────────────────────────────────────────────────────────────────
+  function exportPDF() {
+    if (!st.entity) return;
+    if (!window.jspdf) { alert('PDF library not available. Check your internet connection.'); return; }
+
+    const { jsPDF } = window.jspdf;
+    const cols = st.cols, rows = st.filteredRows;
+    const orient = cols.length > 6 ? 'landscape' : 'portrait';
+    const doc = new jsPDF({ orientation: orient, unit: 'pt', format: 'letter' });
+    const pw = doc.internal.pageSize.getWidth();
+    const ts = new Date().toLocaleString();
+
+    // Cover header
+    doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+    doc.text('Zero Trust Assessment — Raw Data Viewer', pw / 2, 34, { align: 'center' });
+    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+    doc.text(`Entity: ${st.entity}   |   Exported: ${ts}   |   Records: ${rows.length.toLocaleString()}`,
+      pw / 2, 50, { align: 'center' });
+
+    doc.autoTable({
+      head: [cols],
+      body: rows.map(r => cols.map(c => trunc(r[c] === '—' ? '' : (r[c] || ''), 200))),
+      startY: 62,
+      styles: { fontSize: 8, cellPadding: 3, overflow: 'linebreak' },
+      headStyles: { fontSize: 8, fontStyle: 'bold', fillColor: [34, 54, 115], textColor: 255 },
+      alternateRowStyles: { fillColor: [240, 244, 252] },
+      margin: { left: 36, right: 36 },
+      didDrawPage: () => {
+        const pn = doc.internal.getCurrentPageInfo().pageNumber;
+        const tp = doc.internal.getNumberOfPages();
+        doc.setFontSize(7); doc.setTextColor(130);
+        doc.text('Zero Trust Assessment — Raw Data Viewer', pw / 2, 16, { align: 'center' });
+        doc.text(`Page ${pn} of ${tp}`,
+          pw - 36, doc.internal.pageSize.getHeight() - 16, { align: 'right' });
+        doc.setTextColor(0);
+      },
+    });
+
+    // Finalise page numbers
+    const tp = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= tp; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7); doc.setTextColor(130);
+      doc.text(`Page ${i} of ${tp}`, pw - 36, doc.internal.pageSize.getHeight() - 16, { align: 'right' });
+      doc.setTextColor(0);
+    }
+    doc.save(`${st.entity}-export-${isoDate()}.pdf`);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // PDF EXPORT — Master (All Entities)
+  // ──────────────────────────────────────────────────────────────────
+  async function exportMasterPDF() {
+    if (!window.jspdf) { alert('PDF library not available.'); return; }
+    if (st.files.length === 0) { alert('No export files discovered.'); return; }
+
+    const btn = document.getElementById('btn-master-pdf');
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+      const ts = new Date().toLocaleString();
+      const sortedFiles = [...st.files].sort((a, b) => a.name.localeCompare(b.name));
+
+      // ── Cover page ──
+      const cw = doc.internal.pageSize.getWidth();
+      const ch = doc.internal.pageSize.getHeight();
+      doc.setFontSize(26); doc.setFont('helvetica', 'bold'); doc.setTextColor(34, 54, 115);
+      doc.text('Zero Trust Assessment', cw / 2, ch / 2 - 44, { align: 'center' });
+      doc.setFontSize(18); doc.setFont('helvetica', 'normal'); doc.setTextColor(60, 80, 130);
+      doc.text('Raw Data Export', cw / 2, ch / 2 - 8, { align: 'center' });
+      doc.setFontSize(10); doc.setTextColor(100);
+      doc.text(`Generated: ${ts}`, cw / 2, ch / 2 + 28, { align: 'center' });
+      doc.text(`Entities included: ${sortedFiles.length}`, cw / 2, ch / 2 + 46, { align: 'center' });
+      doc.setTextColor(0);
+
+      // ── Table of Contents ──
+      doc.addPage();
+      const tw = doc.internal.pageSize.getWidth();
+      doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(34, 54, 115);
+      doc.text('Contents', 40, 48);
+      doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(0);
+      sortedFiles.forEach((f, i) => doc.text(`${i + 1}.   ${f.name}`, 56, 68 + i * 16));
+
+      // ── Entity sections ──
+      for (const file of sortedFiles) {
+        if (!st.cache[file.name]) {
+          try {
+            setLoadMsg(`Master PDF: loading ${file.name}…`);
+            const records = await fetchEntityRecords(file);
+            const flatRows = records.map(flattenRecord);
+            const colSet = new Set();
+            flatRows.forEach(r => Object.keys(r).forEach(k => colSet.add(k)));
+            st.cache[file.name] = { cols: Array.from(colSet), rows: flatRows };
+          } catch { continue; }
+        }
+
+        const data = st.cache[file.name];
+        if (!data || data.rows.length === 0) continue;
+
+        const cols = data.cols, rows = data.rows;
+        const orient = cols.length > 6 ? 'landscape' : 'portrait';
+        doc.addPage('letter', orient);
+
+        const spw = doc.internal.pageSize.getWidth();
+        doc.setFontSize(15); doc.setFont('helvetica', 'bold'); doc.setTextColor(34, 54, 115);
+        doc.text(file.name, 36, 42);
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
+        doc.text(`${rows.length.toLocaleString()} records · ${cols.length} columns`, 36, 56);
+        doc.setTextColor(0);
+
+        doc.autoTable({
+          head: [cols],
+          body: rows.map(r => cols.map(c => trunc(r[c] === '—' ? '' : (r[c] || ''), 150))),
+          startY: 66,
+          styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
+          headStyles: { fontSize: 7, fontStyle: 'bold', fillColor: [34, 54, 115], textColor: 255 },
+          alternateRowStyles: { fillColor: [240, 244, 252] },
+          margin: { left: 28, right: 28 },
+        });
+      }
+
+      // ── Finalise page numbers on every page ──
+      const totalPg = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPg; i++) {
+        doc.setPage(i);
+        const w = doc.internal.pageSize.getWidth();
+        const h = doc.internal.pageSize.getHeight();
+        doc.setFontSize(7); doc.setTextColor(130);
+        doc.text('Zero Trust Assessment — Raw Data Export', w / 2, 13, { align: 'center' });
+        doc.text(`Page ${i} of ${totalPg}`, w - 28, h - 13, { align: 'right' });
+        doc.setTextColor(0);
+      }
+
+      doc.save(`ZeroTrustAssessment-RawData-${isoDate()}.pdf`);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" style="width:1rem;height:1rem;" aria-hidden="true">' +
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+        '<polyline points="14 2 14 8 20 8"/>' +
+        '<line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/>' +
+        '</svg>Export Master PDF';
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // UI STATE HELPERS
+  // ──────────────────────────────────────────────────────────────────
+  function showState(which) {
+    document.getElementById('loading-state').style.display  = which === 'loading' ? 'flex'  : 'none';
+    document.getElementById('empty-state').style.display    = which === 'empty'   ? 'block' : 'none';
+    document.getElementById('table-container').style.display = which === 'table'  ? 'block' : 'none';
+  }
+
+  function setLoadMsg(msg) {
+    const el = document.getElementById('loading-msg');
+    if (el) el.textContent = msg;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // UTILITIES
+  // ──────────────────────────────────────────────────────────────────
+  /** HTML-escape a value for safe insertion into attribute values or text nodes */
+  function esc(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function isoDate() { return new Date().toISOString().slice(0, 10); }
+
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'),
+      { href: url, download: filename, style: 'display:none' });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  </script>
+</body>
+</html>
