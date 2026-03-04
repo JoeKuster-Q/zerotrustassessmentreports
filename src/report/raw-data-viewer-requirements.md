@@ -6,6 +6,8 @@
 - **Metadata**: Includes header metadata such as Application Name, Entity, Timestamp, and Filters Summary
 - **Format**: No JSON markup, uses flattened values
 - **Toggle**: Provides format toggle for TSV vs Pretty.
+- Only use the latest powershell modules
+- Ensure that the application follows security best practice.
 
 ### UI Layout
 - Add an **Export TXT** button to the UI layout.
